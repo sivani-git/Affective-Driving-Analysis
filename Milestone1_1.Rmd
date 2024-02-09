@@ -1,6 +1,6 @@
 ---
 title: "PROJECT MILESTONE-1"
-author: "Sai Sri Charishma vaddi- 2157099,  Sivani Pamulapati - 2183785"
+author: " Sivani Pamulapati - 2183785"
 date: "2023-03-10"
 output: pdf_document
 ---

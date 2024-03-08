@@ -1,0 +1,1393 @@
+---
+title: "MileStone 2"
+author: "Team 19"
+date: "2023-04-30"
+output: pdf_document
+toc: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(GGally)
+library(tidyverse)
+library(car)
+library(MASS)
+library(caret)
+library(cowplot)
+library(ggplot2)
+library(grid)
+library(lmerTest)
+library(sjPlot)
+library(ggpubr)
+library(glmmTMB)
+library(lmerTest)
+library(dplyr)
+library(cowplot)
+
+```
+
+
+
+```{r echo=FALSE}
+AffectiveDriving<- read.csv("C:\\Users\\sivan\\OneDrive\\Desktop\\Stats\\Affective_Driving_Dataset_N21.csv")
+
+```
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df<- subset(AffectiveDriving,
+            select = c(P_ID,Gender, Day.,Day_Type, Trip., Trip_Period, HR_Raw, Speed, ATP, Accel_Energy, Rot_Energy, JF, Weather,Trait_Anxiety,B5A,B5C,B5E,B5N,B5O, State_Anxiety, MD,PD,TD,P,E,`F`))
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+mode <- function(x) {
+u <- unique(x)
+ tab <- tabulate(match(x, u))
+ u[tab == max(tab)]
+}
+ 
+df <-AffectiveDriving%>%
+  group_by(Trip. , Day. , P_ID , Day_Type, Trip_Period)%>%
+  summarise(
+    HRate=mean(HR_Raw,na.rm=T),
+    Gen = mode(Gender),
+    Spd=mean(Speed,na.rm=T),
+    RTP = mean(RTP,na.rm=T),
+    At = mean(ATP, na.rm = T),
+    Acc_Energy = mean(Accel_Energy, na.rm = T),
+    R_Energy = mean(Rot_Energy, na.rm = T),
+    J_F = mean(JF, na.rm = T),
+    Weather = mode(Weather),
+    Trait_Anx = mean(Trait_Anxiety, na.rm = T),
+    B5_A = mean(B5A, na.rm = T),
+    B5_C = mean(B5C, na.rm = T),
+    B5_E = mean(B5E, na.rm = T),
+    B5_N = mean(B5N, na.rm = T),
+    B5_O = mean(B5O, na.rm = T),
+    State_Anx = mean(State_Anxiety, na.rm = T),
+    M_D = mean(MD, na.rm = T),
+    P_D = mean(PD, na.rm = T),
+    T_D = mean(TD, na.rm = T),
+    P = mean(P, na.rm = T),
+    E = mean(E, na.rm = T),
+    F_ = mean(`F`, na.rm = T),
+    .groups = "drop")
+
+# Remove any rows with missing values
+df <- na.omit(df)
+
+```
+
+
+
+\newpage
+
+# Exploratory Plots
+
+
+```{r fig.height = 4.3, fig.width = 15, echo = FALSE, warning = FALSE}
+
+par(mfrow = c(1,4))
+
+boxplot(df$HRate, 
+        main="Driving HR",
+        ylab="[BPM]")
+mtext("A.                                 ", side=3, line=0, cex=2.1)
+
+
+boxplot(df$Spd,
+        main="Speed",
+        ylab="[MPH]")
+
+boxplot(df$At, 
+        main="Throttle",
+        ylab=expression("[" * degree * "]"))
+
+energy_data <- df[, c("Acc_Energy", "R_Energy")]
+boxplot(energy_data, 
+        main = "Hand Energy",
+        names = c(expression(paste(bar("E" [a]))), expression(paste(bar("E" [t])))))
+
+```
+
+
+
+
+
+```{r fig.height = 5, fig.width = 15, echo = FALSE, warning = FALSE}
+
+par(mfrow = c(1,2))
+boxplot(df$J_F, 
+        main="Jam Factor",
+        ylab = "Flow of Traffic")
+mtext("B.                                                                         ", side=3, line=0, cex=2.1)
+clear_count <- sum(df$Weather == 1)
+clouds_count <- sum(df$Weather == 2)
+rain_count <- sum(df$Weather == 3)
+ot_count <- sum(df$Weather == 4)
+
+weather_counts <- data.frame(Weather = c("Clear", "Clouds", "Rain", "OT"),
+                             Count = c(clear_count, clouds_count, rain_count, ot_count))
+
+weather_percentage <- weather_counts$Count / sum(weather_counts$Count) * 100
+
+
+barplot(weather_percentage, 
+        main="Weather", 
+        names.arg=c("Clear", "Clouds", "Rain","OT"),
+        ylab = "[%]")
+
+
+box(lwd = 2,
+    col = "black")
+
+```
+
+
+
+
+```{r fig.height = 5, fig.width = 15, warning = FALSE, echo = FALSE}
+
+par(mfrow = c(1,2))
+
+boxplot(df$State_Anx, 
+        main = "State Anxiety", 
+        ylab = "Anxiety Level"
+        )
+mtext("C.                                                                           ", side=3, line=0, cex=2.1)
+state <- df[, c("M_D", "P_D", "T_D", "P", "E", "F_")]
+boxplot(state, 
+        main = "NASA-TLX", 
+        ylab = "Perceived Workload")
+
+```
+
+
+
+
+```{r fig.height = 4.3, fig.width = 15, warning = FALSE, echo = FALSE}
+
+par(mfrow=c(1,2))
+
+boxplot(df$Trait_Anx,
+        main = "Trait_Anxiety", 
+        ylab = "STAI Scores")
+
+mtext("D.                                                                           ", side=3, line=0, cex=2.1)
+trait <- df[, c("B5_A", "B5_C", "B5_E", "B5_N", "B5_O")]
+boxplot(trait, 
+        main = "Big-Five",
+        ylab = "Score")
+
+
+
+```
+
+```{r eval=FALSE, warning=FALSE, include=FALSE}
+# X <- df[, c("B5_A", "B5_C", "B5_E", "B5_N", "B5_O","Trait_Anx")]
+# ggpairs(X)
+# Y <- df[, c("M_D", "P_D", "T_D", "P", "E", "F_","State_Anx")]
+# ggpairs(Y)
+# Z<-df[, c("J_F","HRate","Spd","At","Acc_Energy","R_Energy")]
+# ggpairs(Z)
+# # A<-df[,c("Day .", "Trip .","TPeriod")]
+# # ggpairs(A)
+```
+
+\newpage
+***Correlation Matrix***
+
+
+
+
+```{r echo=FALSE, fig.height=30, fig.width=30, message=FALSE, warning=FALSE}
+X<-df[, c("B5_A", "B5_C", "B5_E", "B5_N", "B5_O","Trait_Anx","M_D", "P_D", "T_D", "P", "E", "F_","State_Anx","J_F","HRate","Spd","At","Acc_Energy","R_Energy")]
+ggpairs(X)
+
+```
+
+***Observations:***
+
+From the above matrix, Since all the correlation values are less than 0.8, we can observe that there is no high collinearity between any two of the  predictor variables.
+
+\newpage
+
+
+```{r echo=FALSE, fig.width=4, warning=FALSE}
+cor(df[, c("B5_A", "B5_C", "B5_E", "B5_N", "B5_O","Trait_Anx","M_D", "P_D", "T_D", "P", "E", "F_","State_Anx","J_F","HRate","Spd","At","Acc_Energy","R_Energy")])    
+cor_matrix <- cor(df[, c("B5_A", "B5_C", "B5_E", "B5_N", "B5_O","Trait_Anx","M_D", "P_D", "T_D", "P", "E", "F_","State_Anx","J_F","HRate","Spd","At","Acc_Energy","R_Energy")]) 
+```
+
+\newpage
+```{r fig.height= 15,fig.align='center',fig.width=15,echo=FALSE, warning=FALSE}
+
+ggplot(data = reshape2::melt(cor_matrix)) +
+  geom_tile(aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_gradient2(low = "darkred", mid = "lightblue", high = "violet", midpoint = 0, limit = c(-1, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+
+
+
+
+# Cross-Correlation plots
+
+```{r fig.height= 25,fig.align='center',fig.width=25,echo=FALSE}
+plot(df)
+```
+\newpage
+
+# Full Model 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+full_model <- lmer(HRate ~ Day_Type + Trip_Period + Gen +RTP+  Spd + At + Acc_Energy + R_Energy + J_F + Weather + Trait_Anx + B5_A + B5_C + B5_N + B5_E + B5_O + State_Anx + M_D+ P_D+ T_D + P + E+ F_ + (1|P_ID), data=df, REML=FALSE)
+```
+
+## Full Model Summary
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+summary(full_model)
+```
+\newpage
+
+```{r echo=FALSE, warning=FALSE}
+
+print(full_model, correlation=TRUE)
+#vcov(full_model)
+
+```
+
+
+## Full Model AIC
+
+```{r echo=FALSE, warning=FALSE}
+cat("full Model AIC:" ,AIC(full_model))
+```
+
+
+
+
+\newpage
+
+
+
+
+## Full Model Plots
+
+
+
+```{r,echo=FALSE, warning=FALSE}
+
+# Create the significances legend
+levels = c("A", "B", "C","D")
+num = c(5, 10, 15, 20)
+ymin = c(0, 0, 0, 0)
+ymax = c(1, 2, 3, 4)
+
+Legend_DF = data.frame(levels, num, ymin, ymax)
+
+plot <- ggplot(Legend_DF, aes(x = levels, y = num, colour = levels)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 1.1) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 10),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_blank(),
+    legend.key.width = unit(2, 'cm'),
+    legend.text = element_text(size = 20)
+  ) +
+  theme(axis.ticks.y = element_blank(),
+        axis.ticks.x = element_blank()) +
+  scale_color_manual(
+    values = c("black","#4CAEE3", "#ee9a00","red"),
+    #values = c("black", "#ee9a00", "red"),
+    breaks = c("A", "B", "C","D"),
+    labels = c("     ", "*     ", "**  ","***    ")
+  ) 
+
+# print(plot)
+
+mylegend = get_legend(plot)
+```
+
+
+```{r echo=FALSE, include=FALSE,warning=FALSE}
+# dat type
+plot_dType <- plot_model(full_model,
+             type = "pred",
+             terms = "Day_Type",
+             dot.size = 6,
+             line.size = 2,
+             title = "Day_Type")+
+      aes(color = c("1", "2")) +
+
+          # aes(color = "Day_Type") +
+            scale_color_manual(values = c("gray","#4CAEE3"))+
+  geom_vline(
+          xintercept = mean(df$Day_Type),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+# trip period
+Trip_Periodplot<-plot_model(full_model, 
+             type = "pred", 
+             terms = "Trip_Period",
+             dot.size = 6,
+             line.size = 2,
+             title = "Trip_Period")+ 
+      aes(color = c("1", "2")) +
+
+  scale_color_manual(values = c("gray","red")) +
+        geom_vline(
+          xintercept = mean(df$Trip_Period),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5), 
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+
+# gender
+plot_Gender <- plot_model(full_model, 
+             type = "pred", 
+             terms = "Gen",
+             dot.size = 6,
+             line.size = 2,
+             title = "Gender")+ 
+      aes(color = c("1", "2")) +
+
+        scale_color_manual(values = c("gray","red")) +
+        geom_vline(
+          xintercept = mean(df$Gen),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5), 
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+
+
+
+
+
+
+plot_ATP <- plot_model(full_model, 
+             type = "pred", 
+             terms = "At",
+             dot.size = 6,
+             line.size = 2,
+             title = "ATP")+ 
+        geom_vline(
+          xintercept = mean(df$At),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5), 
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+ plot_RTP<-plot_model(full_model, 
+              type = "pred", 
+              terms = "RTP",
+              dot.size = 6,
+              line.size = 2,
+              title = "RTP")+ 
+         geom_vline(
+           xintercept = mean(df$RTP),
+           linetype = "dashed",
+           color = "gray",
+           size = 1
+         )+  theme_bw()+
+         theme(panel.grid = element_blank(),
+               axis.title.y = element_blank(),
+               plot.title = element_text(hjust = 0.5), 
+               axis.text.x = element_text(size = 10, face = "bold"),
+               axis.text.y = element_text(size = 10, face = "bold"),
+               legend.position = "none"
+               )+ labs(x="", y="")
+
+
+
+
+# Speed
+plot_speed <- plot_model(full_model,
+             type = "pred", 
+             terms = "Spd",
+             dot.size = 6,
+             line.size = 2,
+             title = "Speed")  + 
+  
+  geom_vline(
+    xintercept = mean(df$Spd),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_speed
+
+
+
+# Acceleration Energy
+plot_Acc_energy <- plot_model(full_model,
+             type = "pred", 
+             terms = "Acc_Energy",
+             dot.size = 6,
+             line.size = 2,
+             title = "Speed")  + 
+  geom_vline(
+    xintercept = mean(df$Acc_Energy),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_Acc_energy
+
+
+
+#Rot Energy
+plot_R_energy <- plot_model(full_model,
+             type = "pred", 
+             terms = "R_Energy",
+             dot.size = 6,
+             line.size = 2,
+             title = "Rot Energy")  + 
+  geom_vline(
+    xintercept = mean(df$R_Energy),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_R_energy
+
+
+
+# Weather
+plot_Weather <- plot_model(full_model, 
+             type = "pred", 
+             terms = "Weather",
+             dot.size = 6,
+             line.size = 2,
+             title = "Weather")+ 
+      aes(color = c("1", "2","3","4")) +
+
+        scale_color_manual(values = c("gray","gray","gray","gray")) +
+        geom_vline(
+          xintercept = mean(df$Weather),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5), 
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+#plot_Weather
+
+
+# JF
+plot_JF <- plot_model(full_model,
+             type = "pred", 
+             terms = "J_F",
+             dot.size = 6,
+             line.size = 2,
+             title = "J_F")  + 
+  geom_vline(
+    xintercept = mean(df$J_F),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_JF
+
+
+# Trait Anx
+
+
+plot_TraitAnx <- plot_model(full_model,
+             type = "pred", 
+             terms = "Trait_Anx",
+             dot.size = 6,
+             line.size = 2,
+             title = "Trait Anxiety")  + 
+  aes(color = "Trait_Anx") +
+  scale_color_manual(values = "orange") +
+  geom_vline(
+    xintercept = mean(df$Trait_Anx),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_TraitAnx
+
+
+# B5
+plot_B5A <- plot_model(full_model,
+             type = "pred", 
+             terms = "B5_A",
+             dot.size = 6,
+             line.size = 2,
+             title = "B5_A")  + 
+  geom_vline(
+    xintercept = mean(df$B5_A),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_B5A
+
+
+#B5_C
+plot_B5C <- plot_model(full_model,
+             type = "pred", 
+             terms = "B5_C",
+             dot.size = 6,
+             line.size = 2,
+             title = "B5C")  + 
+  aes(color = "B5_C") +
+  scale_color_manual(values = "orange") +
+  geom_vline(
+    xintercept = mean(df$B5_C),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_B5C
+
+
+
+# BE5
+plot_B5E <- plot_model(full_model,
+             type = "pred", 
+             terms = "B5_E",
+             dot.size = 6,
+             line.size = 2,
+             title = "B5E")  + 
+  geom_vline(
+    xintercept = mean(df$B5_E),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_B5E
+
+
+# B5N
+plot_B5N <- plot_model(full_model,
+             type = "pred", 
+             terms = "B5_N",
+             dot.size = 6,
+             line.size = 2,
+             title = "B5_N")  + 
+  
+  geom_vline(
+    xintercept = mean(df$B5_N),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_B5n
+
+
+# B5_O
+plot_B5O <- plot_model(full_model,
+             type = "pred", 
+             terms = "B5_O",
+             dot.size = 6,
+             line.size = 2,
+             title = "B5O")  + 
+  geom_vline(
+    xintercept = mean(df$B5_O),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#
+
+
+# state Anx
+plot_StateAnx <- plot_model(full_model,
+             type = "pred", 
+             terms = "State_Anx",
+             dot.size = 6,
+             line.size = 2,
+             title = "State Anxiety")  + 
+
+  geom_vline(
+    xintercept = mean(df$State_Anx),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_StateAnx
+
+
+# MD
+plot_MD <- plot_model(full_model,
+             type = "pred", 
+             terms = "M_D",
+             dot.size = 6,
+             line.size = 2,
+             title = "MD")  + 
+  
+  geom_vline(
+    xintercept = mean(df$M_D),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_MD
+
+
+# PD
+plot_PD <- plot_model(full_model,
+             type = "pred", 
+             terms = "P_D",
+             dot.size = 6,
+             line.size = 2,
+             title = "PD")  + 
+  
+  geom_vline(
+    xintercept = mean(df$P_D),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_PD
+
+
+#TD
+plot_td <- plot_model(full_model,
+             type = "pred", 
+             terms = "T_D",
+             dot.size = 6,
+             line.size = 2,
+             title = "TD")  + 
+  
+  geom_vline(
+    xintercept = mean(df$T_D),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_td
+
+
+#P
+plot_P <- plot_model(full_model,
+             type = "pred", 
+             terms = "P",
+             dot.size = 6,
+             line.size = 2,
+             title = "P")  + 
+  
+  geom_vline(
+    xintercept = mean(df$P),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_P
+
+# E
+plot_E <- plot_model(full_model,
+             type = "pred", 
+             terms = "E",
+             dot.size = 6,
+             line.size = 2,
+             title = "E")  + 
+  
+  geom_vline(
+    xintercept = mean(df$E),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_E
+
+# F
+plot_F <- plot_model(full_model,
+             type = "pred", 
+             terms = "F_",
+             dot.size = 6,
+             line.size = 2,
+             title = "F")  + 
+  
+  geom_vline(
+    xintercept = mean(df$F_),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+#plot_F
+```
+
+***Plots for Gender, Day Type, Trip Period, ATP, Trait Anxiety, State Anxiety***
+
+```{r echo=FALSE, fig.height=6.5,fig.align='center',warning=FALSE}
+full.final <- ggarrange(plot_Gender,plot_dType,Trip_Periodplot,plot_ATP,plot_TraitAnx,plot_StateAnx,  plot_Acc_energy, plot_R_energy ,   ncol = 2, nrow=4)
+#full.final
+
+withLegend = cowplot::plot_grid(full.final,mylegend, nrow=2,rel_heights = c(.9,.1))
+withLegend
+```
+\newpage
+
+***Plots for Weather, JF, B5A, B5C, B5E, B5N, B5O***
+
+```{r echo=FALSE,fig.height=8,fig.align='center',warning=FALSE}
+
+full.final <- ggarrange(plot_Weather,plot_RTP, plot_JF, plot_B5A, plot_B5C ,plot_B5E,plot_B5N,plot_B5O, ncol = 2, nrow=4)
+#full.final
+
+withLegend = cowplot::plot_grid(full.final,mylegend, nrow=2,rel_heights = c(.9,.1))
+withLegend
+```
+
+\newpage
+***Plots for MD, PD, TD, P, E, F***
+
+```{r echo=FALSE,fig.height=7,fig.align='center',warning=FALSE}
+
+full.final <- ggarrange(plot_MD,plot_PD,plot_td,plot_P,plot_E,plot_F, ncol = 2, nrow=3)
+#full.final
+
+withLegend = cowplot::plot_grid(full.final,mylegend, nrow=2,rel_heights = c(.9,.1))
+withLegend
+
+```
+
+\newpage
+
+## Full Model Predictor Plots
+
+```{r echo=FALSE, fig.height=6.2, fig.align='center'}
+
+s_plot <- sjPlot::plot_model(full_model,
+                   show.values=TRUE, show.p=TRUE,
+                   title="") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.text = element_text(size = 10)
+       ) + theme_bw()
+
+
+s_plot
+```
+
+***OBSERVATIONS***
+The fixed effects include several variables, such as Day_Type, Trip_Period, Gen, Spd, At, Acc_Energy, R_Energy, J_F, Weather, Trait_Anx, and various personality traits (B5_A, B5_C, B5_N, B5_E, and B5_O). It shows the estimated coefficients for the variables in the model. For example, we can see that the estimated coefficient for Day_TypeWeekEnd is -2.823072, indicating that on average, heart rate is lower on weekends compared to weekdays. Similarly, the coefficient for GenMale is 9.261192, indicating that, on average, males have higher heart rates compared to females.
+
+\newpage
+
+## Full Model Random Effects Plot
+
+```{r echo=FALSE, warning=FALSE}
+
+random_plot<-plot_model(full_model, 
+             type = "re", 
+             show.values = TRUE, value.offset = .3)+
+    theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 10, face = "bold"),
+    axis.text.y = element_text(size = 10, face = "bold"),
+    plot.title = element_blank()
+  )
+
+random_plot
+
+```
+
+
+\newpage
+***Full Model Observations:***
+
+
+This model has groups with a total of 259 Observations.
+
+It includes information about the fixed effects (i.e., the coefficients and standard errors for each predictor variable), the random effects (i.e., the variance of the random intercepts for each participant), and model fit statistics (e.g., AIC, BIC).
+
+The random effects section of the output shows the estimated variance components for the random effects. In this model, there is one random effect, (1|P_ID), which accounts for the variation in heart rate between individuals. The estimated standard deviation of the random intercept is 3.199.
+
+The model also includes a random intercept for each participant, indicating that there is variability in heart rate between participants that is not accounted for by the fixed effects. The variance of the random intercepts is estimated to be 10.24, with a standard deviation of 3.199, indicating that there is considerable individual-level variation in heart rate.
+
+Based on the p-values provided in the output, we can see that several predictor variables are ***SIGNIFICANTLY ASSOCIATED*** with heart rate (p<0.05): ***Day_TypeWeekEnd***, ***Trip_PeriodMorning***, ***GenMale***, ***Trait_Anx***, ***B5_C***. This means that individuals who are male, have higher levels of trait anxiety, and travel during weekday mornings have higher heart rates compared to others in this sample. On weekends, heart rates tend to be lower compared to weekdays.
+
+
+However, other predictor variables, such as Spd, At, Acc_Energy, R_Energy, J_F, Weather, B5_A, B5_N, B5_E, B5_O, State_Anx, M_D, P_D, T_D, P, E, F_ are ***NOT SIGNIFICANTLY*** associated with "Heart rate".
+Overall, this model suggests that several factors, including individual differences and contextual factors, are associated with heart rate. 
+
+
+\newpage
+# Elimination Types including Observations
+## Backward Elimination Steps 
+
+```{r echo=FALSE, warning=FALSE}
+model_backward <- step(full_model,direction = "backward")
+model_backward
+```
+
+
+
+\newpage
+### Suggested Model by Backward Elimination
+
+```{r echo=FALSE, warning=FALSE}
+
+# get model
+final_model <- get_model(model_backward)
+suggested_fm <- final_model@call
+full_model_bw <- eval(suggested_fm)
+
+
+```
+
+### Backward model summary
+
+```{r echo=FALSE, warning=FALSE}
+summary(full_model_bw)
+```
+
+### Backward model AIC value
+
+```{r echo=FALSE}
+
+cat("backward Model AIC:" ,AIC(full_model_bw))
+
+```
+
+
+
+
+\newpage
+## Forward Elimination Steps
+
+```{r echo=FALSE, warning=FALSE}
+model_forward <- step(full_model,direction = "forward")
+model_forward
+```
+
+\newpage
+
+### Suggested Model by Forward Elimination
+
+```{r echo=FALSE, warning=FALSE}
+
+# get model
+final_model <- get_model(model_forward)
+suggested_fm <- final_model@call
+full_model_fw <- eval(suggested_fm)
+```
+
+### Forward model summary
+
+```{r echo=FALSE, warning=FALSE}
+full_model_fw
+```
+
+### Forward model AIC value
+
+```{r echo=FALSE}
+
+cat("forward Model AIC:" ,AIC(full_model_fw))
+
+```
+
+\newpage
+
+## Both Direction stepwise Elimination 
+
+```{r echo=FALSE, warning=FALSE}
+model_step <- step(full_model,direction = "both")
+model_step
+
+```
+
+\newpage
+
+### Suggested Model by Stepwise Direction
+
+```{r echo=FALSE, warning=FALSE}
+# get model
+final_model <- get_model(model_step)
+suggested_fm <- final_model@call
+
+full_model_st <- eval(suggested_fm)
+```
+
+
+### Stepwise Direction Model summary
+```{r echo=FALSE, warning=FALSE}
+full_model_st
+```
+
+### Stepwise direction Model AIC value
+
+```{r echo=FALSE}
+
+cat("Stepwise Model AIC:" ,AIC(full_model_st))
+
+```
+
+
+
+***Observations and Conclusions***
+
+We can see that all three types of Elimination process gave the same results.
+
+From the results, we can see that several variables were eliminated in the elimination process and got the same for three types of elimination processes. The "Day_Type" and "Trip_Period" variables were the only two that were statistically significant at the 0.05 level, with p-values of 0.022471 and 1.845e-05, respectively. This suggests that these two variables are important predictors of the response variable.
+
+The other variables that were eliminated during the selection process were not statistically significant at the 0.05 level, indicating that they did not have a significant impact on the response variable.
+
+***Significant variables:***
+
+Day_Type (p = 0.02335): The type of day (weekday or weekend) has a significant effect on the outcome.
+
+Trip_Period (p < 0.0001): The time of day when the trip is taken has a significant effect on the outcome.
+
+Gen (p = 0.00038): The gender of the driver has a significant effect on the outcome.
+
+Spd (p = 0.01968): The speed of the vehicle has a significant effect on the outcome.
+
+Trait_Anx (p = 0.00057): The driver's level of trait anxiety has a significant effect on the outcome.
+
+B5_C (p = 0.0026): The driver's level of agreeableness (B5_C) has a significant effect on the outcome.
+
+
+***Non-significant variables:***
+
+M_D, J_F, B5_E, State_Anx, P, E, B5_A, At, Acc_Energy, B5_O, B5_N, T_D, Weather, F_, R_Energy, P_D.
+
+
+
+\newpage
+
+# Optimal Model including Observations and Conclusions
+
+
+```{r echo=FALSE}
+opt_model <- lmer(HRate ~  Day_Type + Trip_Period + Gen + Spd + Trait_Anx + B5_C + (1 |  P_ID),REML=FALSE, data=df)
+
+summary(opt_model)
+```
+
+***Observations***
+We’re supposed to choose the lowest (AIC) one. However in our case all are same, we can choose any of them to plot. The model suggested by backward elimination is chosen for the optimal model.
+
+***Optimal Model AIC*** 
+
+```{r echo=FALSE}
+#cat("Optimal Model AIC:" ,AIC(full_model_bw))
+cat("Optimal Model AIC:" ,AIC(opt_model))
+```
+
+## Optimal Model Plots
+```{r include=FALSE}
+plot_dType <- plot_model(full_model_bw,
+             type = "pred",
+             terms = "Day_Type",
+             dot.size = 6,
+             line.size = 2,
+             title = "Day_Type")+
+    aes(color = c("1", "2")) +
+            scale_color_manual(values = c("gray","#4CAEE3")) +
+  geom_vline(
+          xintercept = mean(df$Day_Type),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+
+Trip_Periodplot<-plot_model(full_model_bw, 
+             type = "pred", 
+             terms = "Trip_Period",
+             dot.size = 6,
+             line.size = 2,
+             title = "Trip_Period")+ 
+    aes(color = c("1", "2")) +
+  scale_color_manual(values = c("gray","red")) +
+        geom_vline(
+          xintercept = mean(df$Trip_Period),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5), 
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+plot_B5C <- plot_model(full_model_bw,
+             type = "pred", 
+             terms = "B5_C",
+             dot.size = 6,
+             line.size = 2,
+             title = "B5C")  + 
+  aes(color = "B5_C") +
+  scale_color_manual(values = "orange") +
+  geom_vline(
+    xintercept = mean(df$B5_C),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+plot_speed <- plot_model(full_model_bw,
+             type = "pred", 
+             terms = "Spd",
+             dot.size = 6,
+             line.size = 2,
+             title = "Speed")  + 
+  aes(color = "Spd") +
+            scale_color_manual(values = "#4CAEE3") +
+  
+  geom_vline(
+    xintercept = mean(df$Spd),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+plot_TraitAnx <- plot_model(full_model_bw,
+             type = "pred", 
+             terms = "Trait_Anx",
+             dot.size = 6,
+             line.size = 2,
+             title = "Trait Anxiety")  + 
+  aes(color = "Trait_Anx") +
+  scale_color_manual(values = "red") +
+  geom_vline(
+    xintercept = mean(df$Trait_Anx),
+    linetype = "dashed",
+    color = "gray",
+    size = 1
+  )+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.position = "none"
+        )+ labs(x="", y="")
+
+
+plot_Gender <- plot_model(full_model_bw, 
+             type = "pred", 
+             terms = "Gen",
+             dot.size = 6,
+             line.size = 2,
+             title = "Gender")+ 
+    aes(color = c("1", "2")) +
+        scale_color_manual(values = c("gray","red")) +
+        geom_vline(
+          xintercept = mean(df$Gen),
+          linetype = "dashed",
+          color = "gray",
+          size = 1
+        )+  theme_bw()+
+        theme(panel.grid = element_blank(),
+              axis.title.y = element_blank(),
+              plot.title = element_text(hjust = 0.5), 
+              axis.text.x = element_text(size = 10, face = "bold"),
+              axis.text.y = element_text(size = 10, face = "bold"),
+              legend.position = "none"
+              )+ labs(x="", y="")
+
+
+
+
+```
+
+
+
+
+
+
+```{r echo=FALSE,fig.height=7.6, warning=FALSE}
+
+full.final <- ggarrange(Trip_Periodplot,plot_dType,plot_B5C,plot_speed,plot_TraitAnx,plot_Gender , ncol = 2, nrow=3)
+#full.final
+
+withLegend = cowplot::plot_grid(full.final,mylegend, nrow=2,rel_heights = c(.9,.1))
+withLegend
+```
+
+
+
+## Optimal Model Random Effects Plot
+
+```{r echo=FALSE, warning=FALSE, fig.height=7}
+
+randomplot<-plot_model(full_model_bw, 
+             type = "re", 
+             show.values = TRUE, value.offset = .3)+
+    theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 10, face = "bold"),
+    axis.text.y = element_text(size = 10, face = "bold"),
+    plot.title = element_blank()
+  )
+
+randomplot
+
+```
+***Observations***
+The random effects output shows that the variation in HRate is partially due to differences between P_IDs, with a random intercept variance of 14.04, and the residual variance is 56.63
+
+## Optimal model Predictor Plots
+
+```{r echo=FALSE}
+
+s_plot <- sjPlot::plot_model(full_model_bw,
+                   show.values=TRUE, show.p=TRUE,
+                   title="") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.text = element_text(size = 10)
+       ) + theme_bw()
+
+
+s_plot
+```
+
+
+
+
+***OBSERVATIONS AND CONCLUSIONS***
+
+
+The final model found is:
+
+HRate ~ Day_Type + Trip_Period + Gen + Spd + Trait_Anx + B5_C + (1 | P_ID)
+
+
+Based on the backward reduction steps, we can conclude that:
+
+None of the fixed effects B5_E, E, M_D, P, J_F, At, State_Anx, B5_A, R_Energy, T_D, B5_O, B5_N, Weather, Acc_Energy, and F significantly explain the variation in HRate. Removing any of these fixed effects did not significantly impact the log-likelihood or AIC of the model.
+
+***The fixed effects Day_Type, Trip_Period, Gen, Spd, Trait_Anx, and B5_C significantly affect the variation in HRate. Removing any of these fixed effects resulted in a significant increase in AIC, indicating that they should be included in the final model.***
+
+
+
+Regarding the categorical predictors, compared to Day_TypeWeekday, the HRate during Day_TypeWeekend is significantly lower by 2.75 beats per minute (BPM). Similarly, compared to Trip_PeriodAfternoon, the HRate during Trip_PeriodMorning is significantly lower by 4.45 BPM.
+
+The gender variable (Gen) has a significant positive effect on HRate, indicating that, on average, males have a higher HRate than females by 9.88 BPM.
+
+Additionally, both Spd and Trait_Anx are positively associated with HRate, which means that as they increase, HRate also increases. Finally, the B5_C variable has a significant positive effect on HRate, suggesting that individuals with higher levels of B5_C have a higher HRate.
+
+
+
+
+
+
+
